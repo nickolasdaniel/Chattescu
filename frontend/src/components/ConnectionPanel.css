@@ -1,0 +1,96 @@
+.connection-panel {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+  min-width: 300px;
+  z-index: 1000;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  color: #00ff88;
+}
+
+.connection-status.connected {
+  color: #00ff88;
+}
+
+.connection-status.disconnected {
+  color: #ff4444;
+}
+
+.error-message {
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid #ff4444;
+  color: #ff4444;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+.channel-form {
+  margin-bottom: 16px;
+}
+
+.input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.channel-input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #222;
+  color: white;
+}
+
+.join-button, .leave-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #00ff88;
+  color: black;
+  cursor: pointer;
+}
+
+.join-button:disabled {
+  background: #444;
+  color: #888;
+  cursor: not-allowed;
+}
+
+.current-channel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.channel-name {
+  color: #00ff88;
+  font-weight: bold;
+}
+
+.instructions {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.instructions code {
+  background: #333;
+  padding: 2px 4px;
+  border-radius: 2px;
+}

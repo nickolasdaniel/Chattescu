@@ -1,0 +1,72 @@
+.chat-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.welcome-message {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.system-message {
+  background: rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid #00ff88;
+  font-size: 14px;
+}
+
+.waiting-message {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100px;
+  color: #888;
+  font-style: italic;
+}
+
+.waiting-dots {
+  display: inline-block;
+}
+
+.waiting-dots .dot-1,
+.waiting-dots .dot-2,
+.waiting-dots .dot-3 {
+  opacity: 0;
+  animation: dot-fade 1.5s infinite;
+}
+
+.waiting-dots .dot-1 {
+  animation-delay: 0s;
+}
+
+.waiting-dots .dot-2 {
+  animation-delay: 0.5s;
+}
+
+.waiting-dots .dot-3 {
+  animation-delay: 1s;
+}
+
+@keyframes dot-fade {
+  0%, 80%, 100% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+}

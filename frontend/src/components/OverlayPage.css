@@ -1,0 +1,84 @@
+/* frontend/src/components/OverlayPage.css */
+
+.overlay-page {
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Ensure the root body and html are also transparent */
+body {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: transparent !important;
+}
+
+.overlay-loading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: transparent;
+  color: #ffffff;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(0, 212, 255, 0.3);
+  border-top: 4px solid #00d4ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.overlay-loading p {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #00d4ff;
+  text-align: center;
+}
+
+.overlay-error {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: transparent;
+  color: #ffffff;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-align: center;
+  padding: 20px;
+}
+
+.error-icon {
+  font-size: 3rem;
+  margin-bottom: 20px;
+}
+
+.overlay-error p {
+  margin: 0 0 10px 0;
+  font-size: 1.2rem;
+  color: #ff4444;
+}
+
+.error-details {
+  font-size: 0.9rem;
+  color: #cccccc;
+  max-width: 400px;
+  word-wrap: break-word;
+}
