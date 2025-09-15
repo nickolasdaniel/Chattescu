@@ -27,7 +27,7 @@ A modern, feature-rich chat overlay for Kick streamers with **7TV cosmetics supp
 - **Easy setup** - Simple URL-based overlay generation
 - **Professional styling** - Clean, modern chat appearance
 
-## 🚀 Quick Start
+## 🚀 Quick Start (for local only)
 
 ### Prerequisites
 - Node.js 16+ 
