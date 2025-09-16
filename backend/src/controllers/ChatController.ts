@@ -7,40 +7,36 @@ import { EmoteService } from '../services/EmoteService';
 import { ServerToClientEvents, ClientToServerEvents, ChatMessage, ChannelInfo } from '../types';
 
 export class ChatController {
-  private kickChatService: KickChatService;
+  private channelServices: Map<string, KickChatService>;
   private badgeService: BadgeService;
   private emoteService: EmoteService;
   private connectedClients: Map<string, { socket: Socket; channelName?: string }>;
 
   constructor(private io: Server<ClientToServerEvents, ServerToClientEvents>) {
-    this.kickChatService = new KickChatService();
+    this.channelServices = new Map();
     this.badgeService = new BadgeService();
     this.emoteService = new EmoteService();
     this.connectedClients = new Map();
-
-    // Provide chatroom ID and channel ID lookup functions to KickChatService
-    this.kickChatService.setChatroomIdLookup((channelName: string) => this.getCachedChatroomId(channelName));
-    this.kickChatService.setChannelIdLookup((channelName: string) => this.getCachedChannelId(channelName));
-
-    this.setupKickChatHandlers();
   }
 
-  private setupKickChatHandlers() {
-    this.kickChatService.onMessage((message: ChatMessage) => {
+  private setupKickChatHandlers(channelName: string, service: KickChatService) {
+    service.onMessage((message: ChatMessage) => {
       // Use the channel name to get the correct badge data
-      const channelName = this.kickChatService.getCurrentChannel() || '';
       const processedMessage = this.processBadgesForMessage(message, channelName);
-      this.io.emit('chatMessage', processedMessage);
+      // Emit to the specific channel room
+      this.io.to(`channel:${channelName}`).emit('chatMessage', processedMessage);
     });
 
-    this.kickChatService.onChannelConnected((channelInfo: ChannelInfo) => {
+    service.onChannelConnected((channelInfo: ChannelInfo) => {
       console.log(`KickChatService connected to ${channelInfo.username}. Notifying clients.`);
-      this.io.emit('channelConnected', channelInfo);
+      // Emit to the specific channel room
+      this.io.to(`channel:${channelName}`).emit('channelConnected', channelInfo);
     });
 
-    this.kickChatService.onError((error: string) => {
-      console.error('KickChatService error:', error);
-      this.io.emit('connectionError', error);
+    service.onError((error: string) => {
+      console.error(`KickChatService error for ${channelName}:`, error);
+      // Emit to the specific channel room
+      this.io.to(`channel:${channelName}`).emit('connectionError', error);
     });
   }
 
@@ -59,7 +55,40 @@ export class ChatController {
       console.log(`Client ${socket.id} attempting to join channel: ${channelName}`);
       this.connectedClients.set(socket.id, { socket, channelName });
       
-      this.kickChatService.connectToChannel(channelName);
+      // Join the socket to the channel-specific room
+      socket.join(`channel:${channelName}`);
+      
+      // Get or create a KickChatService for this channel
+      let service = this.channelServices.get(channelName);
+      if (!service) {
+        console.log(`Creating new KickChatService for channel: ${channelName}`);
+        service = new KickChatService();
+        
+        // Set up lookup functions for this service
+        service.setChatroomIdLookup((chName: string) => this.getCachedChatroomId(chName));
+        service.setChannelIdLookup((chName: string) => this.getCachedChannelId(chName));
+        
+        // Set up event handlers for this channel
+        this.setupKickChatHandlers(channelName, service);
+        
+        // Store the service
+        this.channelServices.set(channelName, service);
+        
+        // Connect to the channel
+        await service.connectToChannel(channelName);
+      } else {
+        console.log(`Using existing KickChatService for channel: ${channelName}`);
+        // Channel already connected, just notify the client
+        if (service.getCurrentChannel() === channelName) {
+          socket.emit('channelConnected', {
+            id: 'fallback',
+            slug: channelName.toLowerCase(),
+            username: channelName,
+            chatroom: { id: 'unknown', channel_id: 'unknown' },
+            subscriber_badges: []
+          });
+        }
+      }
       
       console.log(`Successfully started connection process for ${socket.id} to channel: ${channelName}`);
     } catch (error) {
@@ -121,10 +150,14 @@ export class ChatController {
     // Now that we have both IDs, trigger subscription with correct channels
     if (data.channelInfo?.chatroom?.id && data.subscriber_badges && data.subscriber_badges.length > 0) {
       console.log(`🚀 Triggering subscription with correct channel patterns for ${data.channelName}`);
-      // Small delay to ensure the IDs are cached
-      setTimeout(() => {
-        this.kickChatService.subscribeToChannels(data.channelName);
-      }, 500);
+      // Get the service for this specific channel
+      const service = this.channelServices.get(data.channelName);
+      if (service) {
+        // Small delay to ensure the IDs are cached
+        setTimeout(() => {
+          service.subscribeToChannels(data.channelName);
+        }, 500);
+      }
     }
     
     // Cache the badge data using BadgeService
@@ -156,6 +189,21 @@ export class ChatController {
     const clientInfo = this.connectedClients.get(socket.id);
     if (clientInfo?.channelName) {
       console.log(`Client ${socket.id} leaving channel: ${clientInfo.channelName}`);
+      // Leave the channel room
+      socket.leave(`channel:${clientInfo.channelName}`);
+      
+      // Check if this was the last client for this channel
+      const remainingClients = Array.from(this.connectedClients.values())
+        .filter(client => client.channelName === clientInfo.channelName);
+      
+      if (remainingClients.length <= 1) { // Current client is still in the map
+        console.log(`No more clients for channel ${clientInfo.channelName}, disconnecting service`);
+        const service = this.channelServices.get(clientInfo.channelName);
+        if (service) {
+          service.disconnect();
+          this.channelServices.delete(clientInfo.channelName);
+        }
+      }
     }
     this.connectedClients.delete(socket.id);
   }
