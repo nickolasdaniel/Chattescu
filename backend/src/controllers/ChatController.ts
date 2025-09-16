@@ -18,6 +18,10 @@ export class ChatController {
     this.emoteService = new EmoteService();
     this.connectedClients = new Map();
 
+    // Provide chatroom ID and channel ID lookup functions to KickChatService
+    this.kickChatService.setChatroomIdLookup((channelName: string) => this.getCachedChatroomId(channelName));
+    this.kickChatService.setChannelIdLookup((channelName: string) => this.getCachedChannelId(channelName));
+
     this.setupKickChatHandlers();
   }
 
@@ -97,8 +101,55 @@ export class ChatController {
       subscriberBadgesCount: data.subscriber_badges?.length || 0,
       subscriberBadges: data.subscriber_badges
     });
+    
+    // Extract chatroom ID and channel ID from channelInfo if available
+    if (data.channelInfo?.chatroom?.id) {
+      console.log(`🎉 Frontend provided chatroom ID for ${data.channelName}: ${data.channelInfo.chatroom.id}`);
+      // Store this for use by KickChatService
+      this.storeChatroomId(data.channelName, data.channelInfo.chatroom.id);
+    }
+    
+    // Also extract channel ID from badge data
+    if (data.subscriber_badges && data.subscriber_badges.length > 0) {
+      const channelId = data.subscriber_badges[0].channel_id;
+      if (channelId) {
+        console.log(`🎉 Frontend provided channel ID for ${data.channelName}: ${channelId}`);
+        this.storeChannelId(data.channelName, channelId.toString());
+      }
+    }
+    
+    // Now that we have both IDs, trigger subscription with correct channels
+    if (data.channelInfo?.chatroom?.id && data.subscriber_badges && data.subscriber_badges.length > 0) {
+      console.log(`🚀 Triggering subscription with correct channel patterns for ${data.channelName}`);
+      // Small delay to ensure the IDs are cached
+      setTimeout(() => {
+        this.kickChatService.subscribeToChannels(data.channelName);
+      }, 500);
+    }
+    
     // Cache the badge data using BadgeService
     this.badgeService.cacheSubscriberBadgesFromFrontend(data.channelName, data.subscriber_badges);
+  }
+
+  private chatroomIdCache = new Map<string, string>();
+  private channelIdCache = new Map<string, string>();
+
+  private storeChatroomId(channelName: string, chatroomId: string) {
+    this.chatroomIdCache.set(channelName.toLowerCase(), chatroomId);
+    console.log(`💾 Cached chatroom ID for ${channelName}: ${chatroomId}`);
+  }
+
+  private storeChannelId(channelName: string, channelId: string) {
+    this.channelIdCache.set(channelName.toLowerCase(), channelId);
+    console.log(`💾 Cached channel ID for ${channelName}: ${channelId}`);
+  }
+
+  getCachedChatroomId(channelName: string): string | null {
+    return this.chatroomIdCache.get(channelName.toLowerCase()) || null;
+  }
+
+  getCachedChannelId(channelName: string): string | null {
+    return this.channelIdCache.get(channelName.toLowerCase()) || null;
   }
 
   handleLeaveChannel(socket: Socket) {

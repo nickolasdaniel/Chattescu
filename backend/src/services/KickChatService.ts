@@ -5,6 +5,8 @@ import axios from 'axios';
 import { EventEmitter } from 'events';
 import { ChatMessage, ChannelInfo, ChatUser, SevenTVCosmetics } from '../types';
 import { SevenTVService } from './SevenTVService';
+import { BrowserService } from './BrowserService';
+import { BadgeService } from './BadgeService';
 
 interface KickMessageData {
   sender: {
@@ -38,84 +40,169 @@ export class KickChatService extends EventEmitter {
   private currentChannel: string | null = null;
   private isConnected = false;
   private sevenTVService: SevenTVService;
+  private browserService: BrowserService;
+  private badgeService: BadgeService;
+  private chatroomIdLookup: ((channelName: string) => string | null) | null = null;
+  private channelIdLookup: ((channelName: string) => string | null) | null = null;
 
   constructor() {
     super();
     this.sevenTVService = new SevenTVService();
+    this.browserService = new BrowserService();
+    this.badgeService = new BadgeService();
+  }
+
+  setChatroomIdLookup(lookup: (channelName: string) => string | null): void {
+    this.chatroomIdLookup = lookup;
+  }
+
+  setChannelIdLookup(lookup: (channelName: string) => string | null): void {
+    this.channelIdLookup = lookup;
+  }
+
+  // Method to subscribe with correct channels once we have the real IDs from frontend
+  async subscribeToChannels(channelName: string): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.log(`❌ WebSocket not connected, cannot subscribe for ${channelName}`);
+      return;
+    }
+
+    // Get the real IDs from frontend cache
+    let chatroomId: string | null = null;
+    let channelId: string | null = null;
+    
+    if (this.chatroomIdLookup) {
+      chatroomId = this.chatroomIdLookup(channelName);
+    }
+    if (this.channelIdLookup) {
+      channelId = this.channelIdLookup(channelName);
+    }
+
+    if (!chatroomId || !channelId) {
+      console.log(`❌ Missing IDs for subscription: chatroom=${chatroomId}, channel=${channelId}`);
+      return;
+    }
+
+    console.log(`🎯 Subscribing with correct IDs for ${channelName}: chatroom=${chatroomId}, channel=${channelId}`);
+
+    // Subscribe to EXACT patterns from network tab analysis
+    const correctChannels = [
+      `chatroom_${chatroomId}`,           // chatroom_4110233
+      `chatrooms.${chatroomId}.v2`,       // chatrooms.4110233.v2  
+      `chatrooms.${chatroomId}`,          // chatrooms.4110233
+      `channel_${channelId}`,             // channel_4121749
+      `channel.${channelId}`,             // channel.4121749
+      `predictions-channel-${channelId}`  // predictions-channel-4121749
+    ];
+
+    console.log(`📡 Subscribing to ${correctChannels.length} channels for ${channelName}:`, correctChannels);
+
+    // Subscribe to each channel
+    correctChannels.forEach((channel, index) => {
+      setTimeout(() => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          const subscribeMessage = {
+            event: 'pusher:subscribe',
+            data: { channel }
+          };
+          console.log(`🎯 [${index + 1}/${correctChannels.length}] Subscribing to: ${channel}`);
+          this.ws.send(JSON.stringify(subscribeMessage));
+        }
+      }, index * 200); // Faster intervals since we know these are correct
+    });
   }
 
   private async getChatroomId(channelName: string): Promise<string> {
+    console.log(`Fetching chatroom ID for channel: ${channelName}`);
+    
+    // Option 1: Check if frontend already provided the chatroom ID
+    if (this.chatroomIdLookup) {
+      const cachedId = this.chatroomIdLookup(channelName);
+      if (cachedId) {
+        console.log(`🎉 Using cached chatroom ID from frontend: ${cachedId}`);
+        return cachedId;
+      } else {
+        console.log(`💭 No cached chatroom ID found for ${channelName}, frontend hasn't sent badge data yet`);
+      }
+    }
+
+    // Option 2: Try BadgeService directly as fallback
     try {
-      console.log(`Fetching chatroom ID for channel: ${channelName}`);
+      console.log(`🏷️ Using BadgeService directly for ${channelName}`);
+      const channelInfo = await this.badgeService.loadChannelBadges(channelName);
       
-      // Add delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+      if (channelInfo.chatroom?.id) {
+        console.log(`🎉 Found chatroom ID via BadgeService: ${channelInfo.chatroom.id}`);
+        console.log(`📊 Channel info:`, {
+          channelId: channelInfo.id,
+          chatroomId: channelInfo.chatroom.id,
+          username: channelInfo.username,
+          badgeCount: channelInfo.subscriber_badges.length
+        });
+        return channelInfo.chatroom.id;
+      } else {
+        console.log(`⚠️ BadgeService didn't return chatroom ID`);
+      }
+    } catch (error) {
+      console.log(`❌ BadgeService failed for ${channelName}:`, error);
+    }
+
+    // All methods failed - return fallback
+    console.log(`❌ All chatroom ID methods failed for ${channelName}`);
+    console.log(`🔄 Using fallback chatroom ID for WebSocket subscription`);
+    return `fallback_${channelName.toLowerCase()}`;
+  }
+
+  private async retryWithSession(channelName: string, cookies: string): Promise<string> {
+    try {
+      console.log(`🔄 Retrying chatroom API with session cookies for ${channelName}`);
       
-      const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`, {
+      const response = await fetch(`https://kick.com/api/v2/channels/${channelName}/chatroom`, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
           'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'DNT': '1',
+          'Accept-Encoding': 'gzip, deflate, br, zstd',
+          'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none',
-          'Cache-Control': 'max-age=0',
+          'DNT': '1',
+          'Origin': 'https://kick.com',
+          'Referer': `https://kick.com/${channelName}`,
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Cookie': cookies,
+          'Pragma': 'no-cache'
         }
       });
 
-      // Try to parse the response even if it's not 200 OK
-      let data;
-      try {
-        data = await response.json() as {
-          chatroom?: {
-            id: number;
-          };
-        };
-        console.log(`Successfully fetched channel data:`, data);
-      } catch (parseError) {
-        console.log(`Failed to parse response for ${channelName}:`, parseError);
-        if (response.status === 403) {
-          console.log(`Kick API blocked request for ${channelName} - trying fallback approach`);
-          return await this.getFallbackChatroomId(channelName);
+      if (response.ok) {
+        const data = await response.json() as { id: number };
+        console.log(`🎉 Successfully fetched chatroom data with session:`, data);
+        
+        if (data.id) {
+          console.log(`✨ Found chatroom ID with session for ${channelName}: ${data.id}`);
+          return data.id.toString();
         }
-        throw new Error(`Failed to fetch channel data: ${response.status} ${response.statusText}`);
+      } else {
+        console.log(`❌ Session retry failed: ${response.status} ${response.statusText}`);
       }
-
-      const chatroomId = data.chatroom?.id;
-      
-      if (!chatroomId) {
-        console.log(`No chatroom ID found in API response for ${channelName} - trying fallback`);
-        return await this.getFallbackChatroomId(channelName);
-      }
-
-      console.log(`Found chatroom ID for ${channelName}: ${chatroomId}`);
-      return chatroomId.toString();
     } catch (error) {
-      console.error(`Error fetching chatroom ID for ${channelName}:`, error);
-      console.log(`Trying fallback approach for ${channelName}`);
-      return await this.getFallbackChatroomId(channelName);
+      console.log(`❌ Session retry error:`, error);
     }
+
+    // If session retry fails, fall back to HTML scraping
+    return await this.getFallbackChatroomId(channelName);
   }
 
   private async getFallbackChatroomId(channelName: string): Promise<string> {
     // Try to get chatroom ID through alternative methods
     console.log(`Using fallback chatroom ID approach for ${channelName}`);
     
-    // Hardcoded known chatroom IDs for testing
-    const knownChatroomIds: Record<string, string> = {
-      'hyghman': '1633953',
-      'ket_14': '17002729'
-    };
-    
-    const chatroomId = knownChatroomIds[channelName.toLowerCase()];
-    if (chatroomId) {
-      console.log(`Using known chatroom ID for ${channelName}: ${chatroomId}`);
-      return chatroomId;
-    }
+    // Skip hardcoded IDs - we want to test if HTML scraping actually works
+    console.log(`🔍 Attempting to discover chatroom ID for ${channelName} via HTML scraping`);
+    // No hardcoded fallbacks - let's see if we can actually extract it
     
     // For now, let's try to use a different approach - maybe we can extract it from the channel page
     // or use a known working pattern
@@ -125,7 +212,7 @@ export class KickChatService extends EventEmitter {
   private async tryAlternativeChatroomIdFetch(channelName: string): Promise<string> {
     try {
       // Try to fetch the channel page HTML and extract chatroom ID from there
-      console.log(`Trying alternative method to get chatroom ID for ${channelName}`);
+      console.log(`Trying HTML scraping method to get chatroom ID for ${channelName}`);
       
       const response = await fetch(`https://kick.com/${channelName}`, {
         headers: {
@@ -136,56 +223,151 @@ export class KickChatService extends EventEmitter {
           'DNT': '1',
           'Connection': 'keep-alive',
           'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         }
       });
 
       if (response.ok) {
         const html = await response.text();
-        console.log(`HTML length for ${channelName}: ${html.length} characters`);
+        console.log(`✅ Successfully fetched HTML for ${channelName}: ${html.length} characters`);
         
-        // Log a sample of the HTML to see what we're working with
-        const sample = html.substring(0, 1000);
-        console.log(`HTML sample for ${channelName}:`, sample);
-        
-        // Try to extract chatroom ID from the HTML - multiple patterns
+        // Enhanced patterns to extract chatroom ID from various formats
         const patterns = [
-          /"chatroom_id":(\d+)/,
-          /"chatroom":\s*{\s*"id":\s*(\d+)/,
-          /chatroom[_-]?id["\s]*[:=]["\s]*(\d+)/i,
-          /"id":\s*(\d+).*"chatroom"/i,
-          /chatroom.*"id":\s*(\d+)/i,
-          /pusher.*chatroom.*(\d+)/i,
-          /"pusher".*"chatroom".*(\d+)/i
+          // Look for chatroom object with id
+          /"chatroom":\s*{\s*[^}]*"id":\s*(\d+)/i,
+          // Direct chatroom_id reference
+          /"chatroom_id":\s*(\d+)/i,
+          // Pusher channel patterns
+          /chatrooms\.(\d+)\.v2/i,
+          /chatroom_(\d+)/i,
+          // Window data patterns
+          /window\.__INITIAL_STATE__.*?"chatroom":\s*{\s*[^}]*"id":\s*(\d+)/i,
+          // JSON data patterns
+          /"data-chatroom-id":\s*"(\d+)"/i,
+          // Meta tag patterns
+          /<meta[^>]*chatroom[^>]*content="(\d+)"/i,
+          // Script tag patterns
+          /chatroomId["\s]*[:=]["\s]*(\d+)/i,
+          // Broad numeric patterns (8+ digits to avoid false positives)
+          /"id":\s*(\d{8,})/g
         ];
 
         for (const pattern of patterns) {
-          const match = html.match(pattern);
-          if (match && match[1]) {
-            const chatroomId = match[1];
-            console.log(`Found chatroom ID in HTML for ${channelName}: ${chatroomId} (pattern: ${pattern})`);
-            return chatroomId;
+          // Handle the global pattern separately
+          if (pattern.source === '"id":\\s*(\\d{8,})' && pattern.global) {
+            const allMatches = Array.from(html.matchAll(new RegExp(pattern.source, 'gi')));
+            if (allMatches.length > 0) {
+              console.log(`🔍 Found ${allMatches.length} potential chatroom IDs:`, allMatches.map(m => m[1]));
+              
+              // Filter for reasonable chatroom IDs (8+ digits)
+              const validIds = allMatches
+                .map(m => m[1])
+                .filter(id => id && id.length >= 8 && parseInt(id) > 10000000);
+              
+              if (validIds.length > 0 && validIds[0]) {
+                console.log(`✨ Found valid chatroom ID for ${channelName}: ${validIds[0]}`);
+                return validIds[0];
+              }
+            }
+          } else {
+            const matches = html.match(pattern);
+            if (matches && matches[1]) {
+              const chatroomId = matches[1];
+              if (chatroomId && chatroomId.length >= 6) {
+                console.log(`✨ Found chatroom ID in HTML for ${channelName}: ${chatroomId} (pattern: ${pattern})`);
+                return chatroomId;
+              }
+            }
           }
         }
 
-        // Try to find any numeric ID that might be a chatroom ID
-        const numberMatches = html.match(/"id":\s*(\d{6,})/g);
-        if (numberMatches) {
-          console.log(`Found potential chatroom IDs in HTML:`, numberMatches);
-          // Take the first one that looks like a chatroom ID (6+ digits)
-          const firstMatch = numberMatches[0].match(/(\d{6,})/);
-          if (firstMatch && firstMatch[1]) {
-            const chatroomId = firstMatch[1];
-            console.log(`Using potential chatroom ID: ${chatroomId}`);
-            return chatroomId;
+        // Try to find Pusher subscription patterns in script tags
+        const pusherPattern = /pusher.*subscribe.*chatroom[s]?[._](\d+)/gi;
+        const pusherMatches = Array.from(html.matchAll(pusherPattern));
+        if (pusherMatches.length > 0 && pusherMatches[0] && pusherMatches[0][1]) {
+          const chatroomId = pusherMatches[0][1];
+          console.log(`✨ Found chatroom ID via Pusher pattern for ${channelName}: ${chatroomId}`);
+          return chatroomId;
+        }
+
+        // More comprehensive search in script tags
+        const scriptTags = html.match(/<script[^>]*>[\s\S]*?<\/script>/gi) || [];
+        console.log(`📄 Found ${scriptTags.length} script tags in HTML`);
+        
+        // Look for any script that contains chatroom data
+        for (let i = 0; i < scriptTags.length; i++) {
+          const script = scriptTags[i];
+          if (script && (script.includes('chatroom') || script.includes('Chatroom') || script.includes('pusher') || script.includes('Pusher'))) {
+            console.log(`🔍 Script ${i} contains relevant reference (${script.length} chars)`);
+            
+            // Try to extract chatroom ID from this specific script
+            const scriptPatterns = [
+              /"chatroom":\s*{\s*[^}]*"id":\s*(\d+)/i,
+              /"chatroom_id":\s*(\d+)/i,
+              /chatrooms\.(\d+)\.v2/i,
+              /chatroom_(\d+)/i,
+              /"id":\s*(\d{8,})/g
+            ];
+            
+            for (const pattern of scriptPatterns) {
+              if (pattern.global) {
+                const allMatches = Array.from(script.matchAll(new RegExp(pattern.source, 'gi')));
+                if (allMatches.length > 0) {
+                  const validIds = allMatches
+                    .map(m => m[1])
+                    .filter(id => id && id.length >= 8 && parseInt(id) > 10000000);
+                  
+                  if (validIds.length > 0 && validIds[0]) {
+                    console.log(`✨ Found chatroom ID in script ${i}: ${validIds[0]}`);
+                    return validIds[0];
+                  }
+                }
+              } else {
+                const match = script.match(pattern);
+                if (match && match[1] && match[1].length >= 6) {
+                  console.log(`✨ Found chatroom ID in script ${i}: ${match[1]}`);
+                  return match[1];
+                }
+              }
+            }
+            
+            // Show a sample of the script for debugging
+            const sample = script.substring(0, 800) + '...';
+            console.log(`📝 Script ${i} sample:`, sample);
           }
         }
+        
+        // Also check for window.__INITIAL_STATE__ or similar global variables
+        const windowStatePattern = /window\.__\w+__\s*=\s*({[\s\S]*?});/gi;
+        const windowStateMatches = Array.from(html.matchAll(windowStatePattern));
+        
+        for (let i = 0; i < windowStateMatches.length; i++) {
+          const match = windowStateMatches[i];
+          if (match && match[1]) {
+            const stateData = match[1];
+            if (stateData.includes('chatroom')) {
+              console.log(`🔍 Found window state data with chatroom reference`);
+              const chatroomMatch = stateData.match(/"chatroom":\s*{\s*[^}]*"id":\s*(\d+)/i);
+              if (chatroomMatch && chatroomMatch[1]) {
+                console.log(`✨ Found chatroom ID in window state: ${chatroomMatch[1]}`);
+                return chatroomMatch[1];
+              }
+            }
+          }
+        }
+      } else {
+        console.log(`❌ Failed to fetch HTML for ${channelName}: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
-      console.log(`Alternative chatroom ID fetch failed for ${channelName}:`, error);
+      console.log(`❌ HTML scraping failed for ${channelName}:`, error);
     }
     
     // If all else fails, return a fallback that might work
-    console.log(`Using generic fallback for ${channelName}`);
+    console.log(`🔄 Using generic fallback for ${channelName}`);
     return `fallback_${channelName.toLowerCase()}`;
   }
 
@@ -246,72 +428,11 @@ export class KickChatService extends EventEmitter {
 
       this.ws.on('open', async () => {
         console.log('WebSocket connected to Pusher');
+        console.log(`⏳ Waiting for frontend to provide chatroom and channel IDs for ${channelName}...`);
         
-        try {
-          // Try to get the actual chatroom ID, but don't fail if it's blocked
-          let chatroomId: string | null = null;
-          try {
-            chatroomId = await this.getChatroomId(channelName);
-            console.log(`Found chatroom ID for ${channelName}: ${chatroomId}`);
-          } catch (error) {
-            console.log(`Could not get chatroom ID for ${channelName}, using fallback patterns`);
-          }
-          
-          // Try different channel patterns
-          const possibleChannels = [];
-          
-          // Add chatroom ID patterns if we have one
-          if (chatroomId && !chatroomId.startsWith('fallback_')) {
-            possibleChannels.push(
-              `chatrooms.${chatroomId}.v2`,
-              `chatrooms.${chatroomId}`,
-              `chatroom_${chatroomId}`,
-              `chatrooms.${chatroomId}.v1`
-            );
-          }
-          
-          // Add fallback patterns - try some known working patterns
-          possibleChannels.push(
-            `chatrooms.${channelName}.v2`,
-            `chatrooms.${channelName}`,
-            `channel.${channelName}`,
-            `chat.${channelName}`,
-            `live_chat.${channelName}`,
-            `stream.${channelName}`,
-            // Try some patterns that might work
-            `chatrooms.${channelName}.v1`,
-            `chatroom.${channelName}`,
-            `kick.${channelName}`,
-            `kick_chat.${channelName}`
-          );
-
-          console.log(`Trying to subscribe to channels for ${channelName}...`);
-          console.log('Possible channels:', possibleChannels);
-          
-          // Try subscribing to different channel patterns
-          possibleChannels.forEach((channel, index) => {
-            setTimeout(() => {
-              if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                const subscribeMessage = {
-                  event: 'pusher:subscribe',
-                  data: { channel }
-                };
-                console.log(`Attempting to subscribe to: ${channel}`);
-                this.ws.send(JSON.stringify(subscribeMessage));
-              }
-            }, index * 500); // Space out attempts by 500ms
-          });
-          
-          // Resolve after a longer delay to allow subscription attempts and message reception
-          setTimeout(() => {
-            console.log(`WebSocket connected but no chat channels worked`);
-            console.log(`Check the logs above to see which channel subscriptions failed`);
-            resolve();
-          }, possibleChannels.length * 500 + 3000);
-        } catch (error) {
-          console.error(`Failed to setup channel subscription for ${channelName}:`, error);
-          reject(error);
-        }
+        // Don't subscribe immediately - wait for the frontend data
+        // The subscription will be triggered by ChatController when badge data arrives
+        resolve();
       });
 
       this.ws.on('message', async (data: Buffer) => {
@@ -324,19 +445,29 @@ export class KickChatService extends EventEmitter {
           }
           
           if (message.event === 'pusher:subscription_succeeded') {
-            console.log(`Successfully subscribed to channel: ${message.channel}`);
+            console.log(`✅ Successfully subscribed to channel: ${message.channel}`);
             this.isConnected = true;
             // Don't resolve here, wait for actual messages
           }
           
           if (message.event === 'pusher:subscription_error') {
-            console.log(`Failed to subscribe to channel: ${message.channel}`);
-            console.log('Error details:', message);
+            console.log(`❌ Failed to subscribe to channel: ${message.channel}`);
+            console.log('❌ Error details:', JSON.stringify(message, null, 2));
           }
 
-          // Handle chat messages - this is the key part
-          if (message.event === 'App\\Events\\ChatMessageEvent') {
-            console.log('Received chat message event!');
+          // Handle chat messages - try multiple possible event names
+          const possibleChatEvents = [
+            'App\\Events\\ChatMessageEvent',
+            'ChatMessageEvent',
+            'chat_message',
+            'message',
+            'chatroom_message',
+            'App\\Events\\ChatMessage',
+            'App\\Events\\MessageEvent'
+          ];
+
+          if (possibleChatEvents.includes(message.event)) {
+            console.log(`🎉 Received chat message event: ${message.event}`);
             try {
               const messageData: KickMessageData = JSON.parse(message.data);
               console.log('Chat message data:', messageData);
@@ -347,10 +478,22 @@ export class KickChatService extends EventEmitter {
             }
           }
 
-          // Look for other potential chat message events
-          if (message.event && message.event.includes('Chat') && message.event.includes('Message')) {
-            console.log(`Found potential chat event: ${message.event}`);
-            console.log('Event data:', message.data);
+          // Log ANY event that might be related to chat/messages for debugging
+          if (message.event && (
+            message.event.toLowerCase().includes('chat') || 
+            message.event.toLowerCase().includes('message') ||
+            message.event.toLowerCase().includes('msg')
+          )) {
+            console.log(`🔍 POTENTIAL CHAT EVENT DETECTED: ${message.event}`);
+            console.log('🔍 Channel:', message.channel);
+            console.log('🔍 Event data:', JSON.stringify(message.data, null, 2));
+          }
+
+          // Log all non-pusher events for debugging
+          if (message.event && !message.event.startsWith('pusher')) {
+            console.log(`🚀 NON-PUSHER EVENT: ${message.event}`);
+            console.log('🚀 Channel:', message.channel);
+            console.log('🚀 Data:', JSON.stringify(message.data, null, 2));
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -614,6 +757,11 @@ export class KickChatService extends EventEmitter {
       this.ws = null;
       this.isConnected = false;
     }
+  }
+
+  async cleanup(): Promise<void> {
+    this.disconnect();
+    await this.browserService.cleanup();
   }
 
   isChannelConnected(): boolean {
