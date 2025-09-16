@@ -39,7 +39,19 @@ function OverlayPage({ channelName }: OverlayPageProps) {
   });
 
   useEffect(() => {
-    const socket = io('http://localhost:3001');
+    // Environment-based backend URL configuration
+    const getBackendUrl = () => {
+      // Production check
+      if (process.env.NODE_ENV === 'production') {
+        return process.env.REACT_APP_BACKEND_URL || 'https://your-backend-app.railway.app';
+      }
+      // Development fallback
+      return process.env.REACT_APP_BACKEND_URL || 'http://localhost:3001';
+    };
+    
+    const backendUrl = getBackendUrl();
+    console.log(`Connecting to backend: ${backendUrl} (env: ${process.env.NODE_ENV})`);
+    const socket = io(backendUrl);
 
     socket.on('connect', () => {
       console.log('Overlay connected to Chattescu backend');
