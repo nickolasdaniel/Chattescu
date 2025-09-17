@@ -34,7 +34,11 @@ export class FrontendSevenTVService {
         if (response.status === 404) {
           // Cache null result to avoid repeated 404s
           sevenTVCache.set('kick', kickUserId, null, null, 60 * 60 * 1000); // 1 hour TTL for 404s
+          // Don't log 404s - they're expected when users don't have 7TV accounts
+          return null;
         }
+        // Only log non-404 errors
+        console.error(`7TV API error for ${username}: ${response.status} ${response.statusText}`);
         return null;
       }
 
@@ -45,6 +49,11 @@ export class FrontendSevenTVService {
 
       return cosmetics;
     } catch (error) {
+      // Only log non-network errors (404s are expected)
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        // Network error - don't log
+        return null;
+      }
       console.error(`Error fetching 7TV cosmetics for ${username}:`, error);
       return null;
     }
@@ -107,6 +116,10 @@ export class FrontendSevenTVService {
       });
 
       if (!response.ok) {
+        // Don't throw for 404s - they're expected
+        if (response.status === 404) {
+          return null;
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -128,6 +141,10 @@ export class FrontendSevenTVService {
       
       return null;
     } catch (error) {
+      // Only log non-network errors
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        return null;
+      }
       console.error(`Failed to fetch paint data for ${paintId}:`, error);
       return null;
     }

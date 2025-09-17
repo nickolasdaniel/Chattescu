@@ -14,7 +14,9 @@ function MainInterface() {
 
   const handleJoinChannel = (channelName: string) => {
     if (channelName.trim()) {
-      console.log('Generating URL for channel:', channelName);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Generating URL for channel:', channelName);
+      }
       setState(prev => ({
         ...prev,
         currentChannel: channelName.trim().toLowerCase()

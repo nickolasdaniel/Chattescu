@@ -77,13 +77,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, emotes, channelInfo 
     return sevenTVService.fetchPaintData(paintId);
   };
 
-  // Debug: Log cache stats (remove in production)
-  useEffect(() => {
-    const stats = sevenTVService.getCacheStats();
-    if (stats.size > 0) {
-      console.log(`7TV Cache Stats: ${stats.size} entries`, stats.entries.map(e => `${e.key} (${Math.round(e.age / 1000)}s old)`));
-    }
-  }, [frontendCosmetics, paintData]);
+  // Cache stats logging removed - too noisy even in development
 
   // Load 7TV cosmetics from frontend if backend didn't provide them
   useEffect(() => {
@@ -121,7 +115,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, emotes, channelInfo 
         }
         paintDataLoadingRef.current = false;
       }).catch(error => {
-        console.error(`Error fetching paint data for ${message.username}:`, error);
+        // Don't log paint data fetch errors - they're expected when users don't have paints
         paintDataLoadingRef.current = false;
       });
     }

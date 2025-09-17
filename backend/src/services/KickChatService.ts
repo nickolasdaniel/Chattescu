@@ -44,6 +44,13 @@ export class KickChatService extends EventEmitter {
   private badgeService: BadgeService;
   private chatroomIdLookup: ((channelName: string) => string | null) | null = null;
   private channelIdLookup: ((channelName: string) => string | null) | null = null;
+  
+  // Inactivity monitoring
+  private lastMessageTime: number = Date.now();
+  private inactivityTimeout: NodeJS.Timeout | null = null;
+  private readonly INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  private readonly HEARTBEAT_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  private heartbeatTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -97,7 +104,7 @@ export class KickChatService extends EventEmitter {
 
     console.log(`📡 Subscribing to ${correctChannels.length} channels for ${channelName}:`, correctChannels);
 
-    // Subscribe to each channel
+    // Subscribe to each channel with minimal delay
     correctChannels.forEach((channel, index) => {
       setTimeout(() => {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -108,7 +115,7 @@ export class KickChatService extends EventEmitter {
           console.log(`🎯 [${index + 1}/${correctChannels.length}] Subscribing to: ${channel}`);
           this.ws.send(JSON.stringify(subscribeMessage));
         }
-      }, index * 200); // Faster intervals since we know these are correct
+      }, index * 50); // Reduced from 200ms to 50ms for faster subscription
     });
   }
 
@@ -438,7 +445,10 @@ export class KickChatService extends EventEmitter {
       this.ws.on('message', async (data: Buffer) => {
         try {
           const message = JSON.parse(data.toString());
-          console.log('Received WebSocket message:', JSON.stringify(message, null, 2));
+          // Only log important messages in production to reduce overhead
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('Received WebSocket message:', JSON.stringify(message, null, 2));
+          }
           
           if (message.event === 'pusher:connection_established') {
             console.log('Pusher connection established');
@@ -447,6 +457,10 @@ export class KickChatService extends EventEmitter {
           if (message.event === 'pusher:subscription_succeeded') {
             console.log(`✅ Successfully subscribed to channel: ${message.channel}`);
             this.isConnected = true;
+            
+            // Start inactivity monitoring once we're connected
+            this.startInactivityMonitoring();
+            
             // Don't resolve here, wait for actual messages
           }
           
@@ -467,34 +481,24 @@ export class KickChatService extends EventEmitter {
           ];
 
           if (possibleChatEvents.includes(message.event)) {
-            console.log(`🎉 Received chat message event: ${message.event}`);
+            // Only log connection events, not individual messages
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`📨 Chat message received for ${this.currentChannel}`);
+            }
             try {
               const messageData: KickMessageData = JSON.parse(message.data);
-              console.log('Chat message data:', messageData);
               const chatMessage = await this.transformKickMessage(messageData);
+              
+              // Update last message time for inactivity monitoring
+              this.updateLastMessageTime();
+              
               this.emit('message', chatMessage);
             } catch (error) {
               console.error('Error processing chat message:', error);
             }
           }
 
-          // Log ANY event that might be related to chat/messages for debugging
-          if (message.event && (
-            message.event.toLowerCase().includes('chat') || 
-            message.event.toLowerCase().includes('message') ||
-            message.event.toLowerCase().includes('msg')
-          )) {
-            console.log(`🔍 POTENTIAL CHAT EVENT DETECTED: ${message.event}`);
-            console.log('🔍 Channel:', message.channel);
-            console.log('🔍 Event data:', JSON.stringify(message.data, null, 2));
-          }
-
-          // Log all non-pusher events for debugging
-          if (message.event && !message.event.startsWith('pusher')) {
-            console.log(`🚀 NON-PUSHER EVENT: ${message.event}`);
-            console.log('🚀 Channel:', message.channel);
-            console.log('🚀 Data:', JSON.stringify(message.data, null, 2));
-          }
+          // Removed verbose event logging - too noisy even in development
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
           console.log('Raw message data:', data.toString());
@@ -760,12 +764,77 @@ export class KickChatService extends EventEmitter {
   }
 
   async cleanup(): Promise<void> {
+    this.clearInactivityMonitoring();
     this.disconnect();
     await this.browserService.cleanup();
   }
 
   isChannelConnected(): boolean {
     return this.isConnected && this.currentChannel !== null;
+  }
+
+  private startInactivityMonitoring(): void {
+    this.clearInactivityMonitoring();
+    
+    // Set up inactivity timeout
+    this.inactivityTimeout = setTimeout(() => {
+      console.log(`🕐 Channel ${this.currentChannel} inactive for ${this.INACTIVITY_TIMEOUT / 60000} minutes, disconnecting`);
+      this.emit('inactivity', `Channel ${this.currentChannel} inactive for ${this.INACTIVITY_TIMEOUT / 60000} minutes`);
+      this.disconnect();
+    }, this.INACTIVITY_TIMEOUT);
+
+    // Set up heartbeat monitoring
+    this.heartbeatTimeout = setTimeout(() => {
+      this.checkConnectionHealth();
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  private clearInactivityMonitoring(): void {
+    if (this.inactivityTimeout) {
+      clearTimeout(this.inactivityTimeout);
+      this.inactivityTimeout = null;
+    }
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
+  }
+
+  private updateLastMessageTime(): void {
+    this.lastMessageTime = Date.now();
+    
+    // Reset inactivity timeout
+    if (this.inactivityTimeout) {
+      clearTimeout(this.inactivityTimeout);
+      this.inactivityTimeout = setTimeout(() => {
+        console.log(`🕐 Channel ${this.currentChannel} inactive for ${this.INACTIVITY_TIMEOUT / 60000} minutes, disconnecting`);
+        this.emit('inactivity', `Channel ${this.currentChannel} inactive for ${this.INACTIVITY_TIMEOUT / 60000} minutes`);
+        this.disconnect();
+      }, this.INACTIVITY_TIMEOUT);
+    }
+  }
+
+  private checkConnectionHealth(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.log(`💔 WebSocket connection is dead for ${this.currentChannel}, disconnecting`);
+      this.emit('inactivity', `WebSocket connection is dead for ${this.currentChannel}`);
+      this.disconnect();
+      return;
+    }
+
+    // Check if we've received any messages recently
+    const timeSinceLastMessage = Date.now() - this.lastMessageTime;
+    if (timeSinceLastMessage > this.INACTIVITY_TIMEOUT) {
+      console.log(`💔 No messages received for ${Math.round(timeSinceLastMessage / 60000)} minutes for ${this.currentChannel}, disconnecting`);
+      this.emit('inactivity', `No messages received for ${Math.round(timeSinceLastMessage / 60000)} minutes for ${this.currentChannel}`);
+      this.disconnect();
+      return;
+    }
+
+    // Schedule next heartbeat check
+    this.heartbeatTimeout = setTimeout(() => {
+      this.checkConnectionHealth();
+    }, this.HEARTBEAT_INTERVAL);
   }
 
   getCurrentChannel(): string | null {

@@ -11,6 +11,7 @@ export class ChatController {
   private badgeService: BadgeService;
   private emoteService: EmoteService;
   private connectedClients: Map<string, { socket: Socket; channelName?: string }>;
+  private badgeProcessingCache: Map<string, any> = new Map(); // Cache processed badges
 
   constructor(private io: Server<ClientToServerEvents, ServerToClientEvents>) {
     this.channelServices = new Map();
@@ -37,6 +38,12 @@ export class ChatController {
       console.error(`KickChatService error for ${channelName}:`, error);
       // Emit to the specific channel room
       this.io.to(`channel:${channelName}`).emit('connectionError', error);
+    });
+
+    service.on('inactivity', (reason: string) => {
+      console.log(`KickChatService inactive for ${channelName}: ${reason}`);
+      // Clean up the service when it becomes inactive
+      this.channelServices.delete(channelName);
     });
   }
 
@@ -100,7 +107,23 @@ export class ChatController {
   private processBadgesForMessage(message: ChatMessage, channelName: string): ChatMessage {
     const processedBadges = message.badges.map(badge => {
       if (badge.type === 'subscriber' && badge.count) {
-        // Use BadgeService to process subscriber badges
+        // Create cache key for this badge
+        const cacheKey = `${channelName}-${badge.count}`;
+        
+        // Check cache first
+        if (this.badgeProcessingCache.has(cacheKey)) {
+          const cachedResult = this.badgeProcessingCache.get(cacheKey);
+          if (cachedResult) {
+            return {
+              ...badge,
+              image: cachedResult.image,
+              isCustom: true
+            };
+          }
+          return badge; // Cached result was null, use original badge
+        }
+        
+        // Process badge and cache result
         const kickBadges = [{
           type: 'subscriber',
           text: badge.alt,
@@ -109,12 +132,21 @@ export class ChatController {
         
         const processedBadge = this.badgeService.processUserBadges(kickBadges, channelName)[0];
         if (processedBadge && processedBadge.isCustom) {
+          // Cache the result
+          this.badgeProcessingCache.set(cacheKey, {
+            image: processedBadge.image,
+            isCustom: true
+          });
+          
           console.log(`Found custom subscriber badge for ${badge.count} months: ${processedBadge.image}`);
           return {
             ...badge,
             image: processedBadge.image,
             isCustom: true
           };
+        } else {
+          // Cache null result to avoid reprocessing
+          this.badgeProcessingCache.set(cacheKey, null);
         }
       }
       return badge;
@@ -124,16 +156,12 @@ export class ChatController {
   }
 
   handleBadgeData(data: { channelName: string; subscriber_badges: any; channelInfo: ChannelInfo }) {
-    console.log(`Received badge data for channel: ${data.channelName}`);
-    console.log(`Badge data:`, {
-      channelName: data.channelName,
-      subscriberBadgesCount: data.subscriber_badges?.length || 0,
-      subscriberBadges: data.subscriber_badges
-    });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📊 Badge data received for ${data.channelName} (${data.subscriber_badges?.length || 0} badges)`);
+    }
     
     // Extract chatroom ID and channel ID from channelInfo if available
     if (data.channelInfo?.chatroom?.id) {
-      console.log(`🎉 Frontend provided chatroom ID for ${data.channelName}: ${data.channelInfo.chatroom.id}`);
       // Store this for use by KickChatService
       this.storeChatroomId(data.channelName, data.channelInfo.chatroom.id);
     }
@@ -142,21 +170,20 @@ export class ChatController {
     if (data.subscriber_badges && data.subscriber_badges.length > 0) {
       const channelId = data.subscriber_badges[0].channel_id;
       if (channelId) {
-        console.log(`🎉 Frontend provided channel ID for ${data.channelName}: ${channelId}`);
         this.storeChannelId(data.channelName, channelId.toString());
       }
     }
     
     // Now that we have both IDs, trigger subscription with correct channels
     if (data.channelInfo?.chatroom?.id && data.subscriber_badges && data.subscriber_badges.length > 0) {
-      console.log(`🚀 Triggering subscription with correct channel patterns for ${data.channelName}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`🔗 Subscribing to channels for ${data.channelName}`);
+      }
       // Get the service for this specific channel
       const service = this.channelServices.get(data.channelName);
       if (service) {
-        // Small delay to ensure the IDs are cached
-        setTimeout(() => {
-          service.subscribeToChannels(data.channelName);
-        }, 500);
+        // Trigger subscription immediately - no delay needed
+        service.subscribeToChannels(data.channelName);
       }
     }
     
@@ -169,12 +196,10 @@ export class ChatController {
 
   private storeChatroomId(channelName: string, chatroomId: string) {
     this.chatroomIdCache.set(channelName.toLowerCase(), chatroomId);
-    console.log(`💾 Cached chatroom ID for ${channelName}: ${chatroomId}`);
   }
 
   private storeChannelId(channelName: string, channelId: string) {
     this.channelIdCache.set(channelName.toLowerCase(), channelId);
-    console.log(`💾 Cached channel ID for ${channelName}: ${channelId}`);
   }
 
   getCachedChatroomId(channelName: string): string | null {
