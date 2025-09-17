@@ -81,25 +81,39 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, emotes, c
 
   // Cache stats logging removed - too noisy even in development
 
-  // Load 7TV cosmetics from frontend if backend didn't provide them
+  // Load 7TV cosmetics from frontend if backend didn't provide them (with rate limiting)
   useEffect(() => {
     if (!message.user.cosmetics && !cosmeticsLoaded && !isLoadingRef.current) {
       isLoadingRef.current = true;
-      // Use the Kick user ID from the backend message
-      sharedSevenTVService.getUserCosmetics(message.username, message.user.id).then(cosmetics => {
-        setFrontendCosmetics(cosmetics);
-        setCosmeticsLoaded(true);
-        isLoadingRef.current = false;
-        
-        // If user has a paint, fetch paint data via GraphQL
-        if (cosmetics && cosmetics.user.style.paint_id) {
-          fetchPaintData(cosmetics.user.style.paint_id).then(paint => {
-            if (paint) {
-              setPaintData(paint);
-            }
-          });
+      
+      // Add timeout to prevent hanging during spam
+      const timeoutPromise = new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error('Frontend 7TV timeout')), 3000)
+      );
+      
+      // Race the cosmetics fetch with timeout
+      Promise.race([
+        sharedSevenTVService.getUserCosmetics(message.username, message.user.id),
+        timeoutPromise
+      ]).then(cosmetics => {
+        if (cosmetics) {
+          setFrontendCosmetics(cosmetics);
+          setCosmeticsLoaded(true);
+          
+          // If user has a paint, fetch paint data via GraphQL
+          if (cosmetics.user.style.paint_id) {
+            fetchPaintData(cosmetics.user.style.paint_id).then(paint => {
+              if (paint) {
+                setPaintData(paint);
+              }
+            }).catch(() => {
+              // Silently fail paint fetch during spam
+            });
+          }
         }
+        isLoadingRef.current = false;
       }).catch(() => {
+        // Silently fail during spam - cosmetics are optional
         isLoadingRef.current = false;
       });
     }
@@ -126,6 +140,13 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, emotes, c
   const parseMessageContent = (content: string): string => {
     let parsedContent = content;
 
+    // Debug logging for development
+    if (process.env.NODE_ENV !== 'production' && emotes.length > 0) {
+      console.log(`Parsing message: "${content}" with ${emotes.length} emotes:`, 
+        emotes.slice(0, 5).map(e => e.name) // Show first 5 emote names
+      );
+    }
+
     // Parse Kick emotes with [emote:id:name] format
     const emoteRegex = /\[emote:(\d+):(\w+)\]/g;
     parsedContent = parsedContent.replace(emoteRegex, (match, emoteId, emoteName) => {
@@ -134,13 +155,24 @@ const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, emotes, c
     });
 
     // Parse 7TV emotes
+    let replacementCount = 0;
     emotes.forEach(emote => {
       const regex = new RegExp(`\\b${escapeRegExp(emote.name)}\\b`, 'g');
       const emoteClass = `emote seventv-emote ${emote.type}-emote ${emote.animated ? 'animated' : 'static'}`;
       const emoteHtml = `<img src="${emote.url}" class="${emoteClass}" alt="${emote.name}" title="${emote.name} (7TV ${emote.type})" loading="lazy">`;
       
+      const beforeReplace = parsedContent;
       parsedContent = parsedContent.replace(regex, emoteHtml);
+      
+      if (beforeReplace !== parsedContent && process.env.NODE_ENV !== 'production') {
+        console.log(`✅ Replaced 7TV emote: ${emote.name} in message`);
+        replacementCount++;
+      }
     });
+
+    if (process.env.NODE_ENV !== 'production' && replacementCount > 0) {
+      console.log(`🎭 Total 7TV emotes replaced: ${replacementCount}`);
+    }
 
     return parsedContent;
   };

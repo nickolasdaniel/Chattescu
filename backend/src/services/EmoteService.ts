@@ -8,6 +8,7 @@ export class EmoteService {
   private globalEmotesCache: SevenTVEmote[] = [];
   private channelEmotesCache = new Map<string, SevenTVEmote[]>();
   private kickUserIdCache = new Map<string, string>();
+  private channelIdLookup: ((channelName: string) => string | null) | null = null;
 
   async loadChannelEmotes(channelName: string): Promise<SevenTVEmote[]> {
     try {
@@ -54,6 +55,10 @@ export class EmoteService {
     }
   }
 
+  setChannelIdLookup(lookup: (channelName: string) => string | null): void {
+    this.channelIdLookup = lookup;
+  }
+
   private async loadChannelSpecificEmotes(channelName: string): Promise<SevenTVEmote[]> {
     // Check cache first
     const cached = this.channelEmotesCache.get(channelName);
@@ -62,16 +67,35 @@ export class EmoteService {
     }
 
     try {
-      // Get Kick user ID for the channel
-      const kickUserId = await this.getKickUserId(channelName);
+      // Get Kick user ID from the frontend-provided lookup first
+      let kickUserId: string | null = null;
+      
+      if (this.channelIdLookup) {
+        kickUserId = this.channelIdLookup(channelName);
+        if (kickUserId) {
+          console.log(`Using cached channel ID for ${channelName}: ${kickUserId}`);
+        }
+      }
+      
+      // Fallback to API call if no lookup available
+      if (!kickUserId) {
+        console.log(`No cached channel ID for ${channelName}, trying API...`);
+        kickUserId = await this.getKickUserId(channelName);
+      }
+      
       if (!kickUserId) {
         console.log(`No Kick user ID found for ${channelName}`);
         return [];
       }
 
       // Try to get 7TV data using Kick user ID
+      console.log(`🔍 Fetching 7TV data for ${channelName} using Kick ID: ${kickUserId}`);
+      console.log(`🌐 7TV API URL: https://7tv.io/v3/users/kick/${kickUserId}`);
+      
       const response = await axios.get(`https://7tv.io/v3/users/kick/${kickUserId}`);
       const data = response.data;
+      
+      console.log(`📦 7TV API response for ${channelName}:`, JSON.stringify(data, null, 2));
 
       if (!data.emote_set?.emotes) {
         console.log(`${channelName} has no 7TV emote set`);

@@ -20,6 +20,8 @@ export class SevenTVService {
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   ];
   private requestCount = 0;
+  private rateLimitQueue = new Map<string, number>(); // Track last request time per user
+  private readonly RATE_LIMIT_MS = 1000; // 1 second between requests per user
 
   constructor() {
     // Initialize proxy agent if proxy URL is provided
@@ -90,17 +92,28 @@ export class SevenTVService {
   async getUserCosmetics(username: string): Promise<SevenTVCosmetics | null> {
     // Check if 7TV cosmetics are enabled
     if (!this.enabled) {
-      console.log(`7TV cosmetics disabled for ${username}`);
       return null;
     }
 
+    const userKey = username.toLowerCase();
+
     try {
       // Check cache first
-      const cached = this.cosmeticsCache.get(username.toLowerCase());
+      const cached = this.cosmeticsCache.get(userKey);
       if (cached) {
-        console.log(`Using cached 7TV cosmetics for ${username}`);
         return cached;
       }
+
+      // Rate limiting: check if we've made a request for this user recently
+      const lastRequestTime = this.rateLimitQueue.get(userKey) || 0;
+      const now = Date.now();
+      if (now - lastRequestTime < this.RATE_LIMIT_MS) {
+        // Skip request if rate limited, return null silently
+        return null;
+      }
+      
+      // Update rate limit tracker
+      this.rateLimitQueue.set(userKey, now);
 
       console.log(`Fetching 7TV cosmetics for ${username}...`);
       

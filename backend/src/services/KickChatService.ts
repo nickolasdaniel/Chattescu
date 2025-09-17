@@ -530,13 +530,22 @@ export class KickChatService extends EventEmitter {
   }
 
   private async transformKickMessage(kickMessage: KickMessageData): Promise<ChatMessage> {
-    // Try to fetch 7TV cosmetics for the user (non-blocking)
+    // Try to fetch 7TV cosmetics for the user (non-blocking with timeout)
     let cosmetics: SevenTVCosmetics | null = null;
     try {
-      cosmetics = await this.sevenTVService.getUserCosmetics(kickMessage.sender.username);
+      // Add timeout to prevent blocking during spam
+      const cosmeticsPromise = this.sevenTVService.getUserCosmetics(kickMessage.sender.username);
+      cosmetics = await Promise.race([
+        cosmeticsPromise,
+        new Promise<null>((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout')), 2000) // 2 second timeout
+        )
+      ]);
     } catch (error) {
-      // Silently fail - 7TV cosmetics are optional
-      console.log(`7TV cosmetics lookup failed for ${kickMessage.sender.username}, continuing without cosmetics`);
+      // Silently fail - 7TV cosmetics are optional, especially during spam
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`7TV cosmetics lookup failed for ${kickMessage.sender.username}, continuing without cosmetics`);
+      }
     }
     
     const user: ChatUser = {

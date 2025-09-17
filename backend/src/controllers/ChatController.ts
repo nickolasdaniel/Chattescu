@@ -18,6 +18,9 @@ export class ChatController {
     this.badgeService = new BadgeService();
     this.emoteService = new EmoteService();
     this.connectedClients = new Map();
+    
+    // Set up channel ID lookup for EmoteService
+    this.emoteService.setChannelIdLookup((chName: string) => this.getCachedChannelId(chName));
   }
 
   private setupKickChatHandlers(channelName: string, service: KickChatService) {
@@ -83,6 +86,8 @@ export class ChatController {
         
         // Connect to the channel
         await service.connectToChannel(channelName);
+        
+        // Don't load emotes here - wait for badge data with channel ID
       } else {
         console.log(`Using existing KickChatService for channel: ${channelName}`);
         // Channel already connected, just notify the client
@@ -94,6 +99,8 @@ export class ChatController {
             chatroom: { id: 'unknown', channel_id: 'unknown' },
             subscriber_badges: []
           });
+          
+          // Emotes will be loaded when badge data arrives
         }
       }
       
@@ -170,6 +177,7 @@ export class ChatController {
     if (data.subscriber_badges && data.subscriber_badges.length > 0) {
       const channelId = data.subscriber_badges[0].channel_id;
       if (channelId) {
+        console.log(`🆔 Storing channel ID for ${data.channelName}: ${channelId}`);
         this.storeChannelId(data.channelName, channelId.toString());
       }
     }
@@ -189,6 +197,9 @@ export class ChatController {
     
     // Cache the badge data using BadgeService
     this.badgeService.cacheSubscriberBadgesFromFrontend(data.channelName, data.subscriber_badges);
+    
+    // Now that we have channel ID, load emotes
+    this.loadChannelEmotes(data.channelName);
   }
 
   private chatroomIdCache = new Map<string, string>();
@@ -235,6 +246,22 @@ export class ChatController {
 
   handleDisconnect(socket: Socket) {
     this.handleLeaveChannel(socket);
+  }
+
+  private async loadChannelEmotes(channelName: string) {
+    try {
+      console.log(`🎭 Loading emotes for channel: ${channelName}`);
+      
+      // Load emotes using EmoteService
+      const emotes = await this.emoteService.loadChannelEmotes(channelName);
+      
+      // Emit emotes to all clients in this channel room
+      this.io.to(`channel:${channelName}`).emit('emotesLoaded', emotes);
+      
+      console.log(`✅ Loaded ${emotes.length} emotes for ${channelName}`);
+    } catch (error) {
+      console.error(`❌ Failed to load emotes for ${channelName}:`, error);
+    }
   }
 
   getActiveConnections(): number {
