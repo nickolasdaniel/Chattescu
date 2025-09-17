@@ -39,6 +39,15 @@ function OverlayPage({ channelName }: OverlayPageProps) {
   });
 
   useEffect(() => {
+    // Set dynamic page title based on channel
+    document.title = `${channelName} - Chattescu`;
+    
+    // Set dynamic meta description
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription) {
+      metaDescription.setAttribute('content', `Live chat overlay for ${channelName} on Kick`);
+    }
+    
     // Environment-based backend URL configuration
     const getBackendUrl = () => {
       // Production check
@@ -50,35 +59,45 @@ function OverlayPage({ channelName }: OverlayPageProps) {
     };
     
     const backendUrl = getBackendUrl();
-    console.log(`Connecting to backend: ${backendUrl} (env: ${process.env.NODE_ENV})`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`Connecting to backend: ${backendUrl} (env: ${process.env.NODE_ENV})`);
+    }
     const socket = io(backendUrl);
 
     socket.on('connect', () => {
-      console.log('Overlay connected to Chattescu backend');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Overlay connected to Chattescu backend');
+      }
       setState(prev => ({ ...prev, socket, isConnected: true, connectionError: null }));
       
       // Auto-join the channel when connected
       if (channelName) {
-        console.log('Auto-joining channel:', channelName);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Auto-joining channel:', channelName);
+        }
         socket.emit('joinChannel', channelName.toLowerCase());
       }
     });
 
     socket.on('disconnect', () => {
-      console.log('Overlay disconnected from backend');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Overlay disconnected from backend');
+      }
       setState(prev => ({ ...prev, isConnected: false }));
     });
 
     socket.on('chatMessage', (message: ChatMessage) => {
       setState(prev => ({
         ...prev,
-        messages: [...prev.messages.slice(-14), message],
+        messages: [...prev.messages.slice(-28), message],
         hasReceivedMessages: true
       }));
     });
 
     socket.on('channelConnected', (channelInfo: ChannelInfo) => {
-      console.log('Overlay connected to channel:', channelInfo.username);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Overlay connected to channel:', channelInfo.username);
+      }
       setState(prev => ({
         ...prev,
         channelInfo,
@@ -94,7 +113,9 @@ function OverlayPage({ channelName }: OverlayPageProps) {
     });
 
     socket.on('emotesLoaded', (emotes: SevenTVEmote[]) => {
-      console.log('Overlay emotes loaded:', emotes.length);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Overlay emotes loaded:', emotes.length);
+      }
       setState(prev => ({ ...prev, emotes }));
     });
 
@@ -117,12 +138,16 @@ function OverlayPage({ channelName }: OverlayPageProps) {
 
   const fetchAndSendBadgeData = async (channelName: string, socket: typeof Socket) => {
     try {
-      console.log('Overlay fetching badge data for:', channelName);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Overlay fetching badge data for:', channelName);
+      }
       const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Overlay successfully fetched channel data:', data);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Overlay successfully fetched channel data:', data);
+        }
         
         socket.emit('badgeData', {
           channelName,
@@ -137,7 +162,9 @@ function OverlayPage({ channelName }: OverlayPageProps) {
             }
           }
         });
-        console.log('Overlay sent badge data to backend');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Overlay sent badge data to backend');
+        }
       } else {
         console.error('Overlay failed to fetch channel data:', response.status, response.statusText);
       }

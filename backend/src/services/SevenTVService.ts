@@ -135,37 +135,51 @@ export class SevenTVService {
       
       // If user has a paint, try to fetch paint details using GraphQL
       if (cosmetics.user.style.paint_id) {
-        console.log(`User ${username} has paint_id: ${cosmetics.user.style.paint_id}`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`User ${username} has paint_id: ${cosmetics.user.style.paint_id}`);
+        }
         try {
           const paintData = await this.fetchPaintData(cosmetics.user.style.paint_id);
           if (paintData) {
             // Add paint data to cosmetics
             (cosmetics as any).paint = paintData;
-            console.log(`Loaded paint data for ${username}:`, paintData);
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`Loaded paint data for ${username}:`, paintData);
+            }
           } else {
-            console.log(`No paint data found for ${username}, using base color: ${cosmetics.user.style.color}`);
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`No paint data found for ${username}, using base color: ${cosmetics.user.style.color}`);
+            }
           }
         } catch (error) {
-          console.log(`Failed to fetch paint data for ${username}:`, error);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`Failed to fetch paint data for ${username}:`, error);
+          }
         }
       } else {
-        console.log(`User ${username} has no paint_id, using base color: ${cosmetics.user.style.color}`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`User ${username} has no paint_id, using base color: ${cosmetics.user.style.color}`);
+        }
       }
       
       // Cache the result
       this.cosmeticsCache.set(username.toLowerCase(), cosmetics);
       
-      console.log(`Loaded 7TV cosmetics for ${username}:`, {
-        hasPaint: !!cosmetics.user.style.paint_id,
-        color: cosmetics.user.style.color,
-        roles: cosmetics.roles.length
-      });
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`Loaded 7TV cosmetics for ${username}:`, {
+          hasPaint: !!cosmetics.user.style.paint_id,
+          color: cosmetics.user.style.color,
+          roles: cosmetics.roles.length
+        });
+      }
 
       return cosmetics;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 404) {
-          console.log(`No 7TV account found for ${username}`);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`No 7TV account found for ${username}`);
+          }
         } else {
           console.error(`Failed to fetch 7TV cosmetics for ${username}:`, {
             status: error.response?.status,
@@ -182,10 +196,10 @@ export class SevenTVService {
 
   private async getKickUserId(username: string): Promise<string | null> {
     try {
-      // Add delay between requests to avoid rate limiting
+      // Add minimal delay between requests to avoid rate limiting
       this.requestCount++;
       if (this.requestCount > 1) {
-        await this.delay(1000 + Math.random() * 2000); // 1-3 second delay
+        await this.delay(200 + Math.random() * 300); // Reduced to 200-500ms delay
       }
 
       const response = await axios.get(`${this.KICK_API_BASE}/channels/${username}`, {

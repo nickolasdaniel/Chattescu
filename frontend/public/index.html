@@ -2,29 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <!-- Favicon - Force refresh with cache busting -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzYzNjZmMSIvPgogIDxwYXRoIGQ9Ik04IDEyQzggOS43OTA4NiA5Ljc5MDg2IDggMTIgOEgyMEMyMi4yMDkxIDggMjQgOS43OTA4NiAyNCAxMlYxOEMyNCAyMC4yMDkxIDIyLjIwOTEgMjIgMjAgMjJIMTZMMTIgMjZWMjJIMTJDOS43OTA4NiAyMiA4IDIwLjIwOTEgOCAxOFYxMloiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iMTQiIGN5PSIxNSIgcj0iMS41IiBmaWxsPSIjNjM2NmYxIi8+CiAgPGNpcmNsZSBjeD0iMTgiIGN5PSIxNSIgcj0iMS41IiBmaWxsPSIjNjM2NmYxIi8+CiAgPHRleHQgeD0iMTYiIHk9IjIwIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iOCIgZm9udC13ZWlnaHQ9ImJvbGQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2MzY2ZjEiPkM8L3RleHQ+Cjwvc3ZnPgo=" />
+    <link rel="shortcut icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzYzNjZmMSIvPgogIDxwYXRoIGQ9Ik04IDEyQzggOS43OTA4NiA5Ljc5MDg2IDggMTIgOEgyMEMyMi4yMDkxIDggMjQgOS43OTA4NiAyNCAxMlYxOEMyNCAyMC4yMDkxIDIyLjIwOTEgMjIgMjAgMjJIMTZMMTIgMjZWMjJIMTJDOS43OTA4NiAyMiA4IDIwLjIwOTEgOCAxOFYxMloiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iMTQiIGN5PSIxNSIgcj0iMS41IiBmaWxsPSIjNjM2NmYxIi8+CiAgPGNpcmNsZSBjeD0iMTgiIGN5PSIxNSIgcj0iMS41IiBmaWxsPSIjNjM2NmYxIi8+CiAgPHRleHQgeD0iMTYiIHk9IjIwIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iOCIgZm9udC13ZWlnaHQ9ImJvbGQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2MzY2ZjEiPkM8L3RleHQ+Cjwvc3ZnPgo=" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyIiB4PSIxOTIiIHZpZXdCb3g9IjAgMCAxOTIgMTkyIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxjaXJjbGUgY3g9Ijk2IiBjeT0iOTYiIHI9Ijk2IiBmaWxsPSIjNjM2NmYxIi8+CiAgPHBhdGggZD0iTTQ4IDcyQzQ4IDU4Ljc0NTIgNTguNzQ1MiA0OCA3MiA0OEgxMjBDMTMzLjI1NSA0OCAxNDQgNTguNzQ1MiAxNDQgNzJWMTIwQzE0NCAxMzMuMjU1IDEzMy4yNTUgMTQ0IDEyMCAxNDRINjZMNjAgMTU2VjE0NEg3MkM1OC43NDUyIDE0NCA0OCAxMzMuMjU1IDQ4IDEyMFY3MloiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iODQiIGN5PSI5MCIgcj0iOSIgZmlsbD0iIzYzNjZmMSIvPgogIDxjaXJjbGUgY3g9IjEwOCIgY3k9IjkwIiByPSI5IiBmaWxsPSIjNjM2NmYxIi8+CiAgPHRleHQgeD0iOTYiIHk9IjEyMCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjQ4IiBmb250LXdlaWdodD0iYm9sZCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzYzNjZmMSI+QzwvdGV4dD4KPC9zdmc+Cg==" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#6366f1" />
     <meta
       name="description"
-      content="Web site created using create-react-app"
+      content="Kick Chat Overlay for Streamers - Professional chat overlay for OBS streaming"
     />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
+    <meta name="keywords" content="kick, chat, overlay, streaming, obs, twitch, streamer, chat overlay" />
+    <meta name="author" content="Chattescu" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Chattescu - Kick Chat Overlay" />
+    <meta property="og:description" content="Professional chat overlay for Kick streamers" />
+    <meta property="og:url" content="https://chattescu.vercel.app" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="Chattescu - Kick Chat Overlay" />
+    <meta property="twitter:description" content="Professional chat overlay for Kick streamers" />
+    
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
-
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
+    <title>Chattescu</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

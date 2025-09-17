@@ -1,6 +1,7 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "Chattescu",
+  "name": "Chattescu - Kick Chat Overlay",
+  "description": "Professional chat overlay for Kick streamers",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,6 +21,7 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#6366f1",
+  "background_color": "#1a1a1a",
+  "categories": ["entertainment", "productivity", "utilities"]
 }
