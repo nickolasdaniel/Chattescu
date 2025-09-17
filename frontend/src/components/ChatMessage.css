@@ -74,10 +74,11 @@
     rgba(255, 255, 255, 0.01) 75%, 
     transparent 100%);
   background-size: 300% 100%;
-  animation: seventv-shimmer 3s ease-in-out infinite;
+  animation: seventv-shimmer 4s ease-in-out infinite;
   text-shadow: 
     0 0 0.5px currentColor;
   font-weight: 500;
+  will-change: background-position; /* Optimize for animation */
 }
 
 /* Clean shimmer animation for 7TV users with paint effects */
@@ -112,6 +113,7 @@
   image-rendering: auto;
   filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.8))
          drop-shadow(1px 1px 0px rgba(0, 0, 0, 1));
+  will-change: transform; /* Optimize for potential hover effects */
 }
 
 .seventv-emote {

@@ -87,11 +87,18 @@ function OverlayPage({ channelName }: OverlayPageProps) {
     });
 
     socket.on('chatMessage', (message: ChatMessage) => {
-      setState(prev => ({
-        ...prev,
-        messages: [...prev.messages.slice(-28), message],
-        hasReceivedMessages: true
-      }));
+      setState(prev => {
+        // More efficient message array management
+        const newMessages = prev.messages.length >= 28 
+          ? [...prev.messages.slice(-27), message]  // Keep 27 + new = 28 total
+          : [...prev.messages, message];
+        
+        return {
+          ...prev,
+          messages: newMessages,
+          hasReceivedMessages: true
+        };
+      });
     });
 
     socket.on('channelConnected', (channelInfo: ChannelInfo) => {

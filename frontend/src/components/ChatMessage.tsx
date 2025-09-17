@@ -1,6 +1,6 @@
 // frontend/src/components/ChatMessage.tsx
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Badge from './Badge';
 import { ChatMessage as ChatMessageType, ChannelInfo, SevenTVEmote, SevenTVCosmetics } from '../types';
 import { FrontendSevenTVService } from '../services/SevenTVService';
@@ -50,11 +50,13 @@ interface ChatMessageProps {
   channelInfo: ChannelInfo | null;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, emotes, channelInfo }) => {
+// Shared service instance to prevent creating multiple instances
+const sharedSevenTVService = new FrontendSevenTVService();
+
+const ChatMessage: React.FC<ChatMessageProps> = React.memo(({ message, emotes, channelInfo }) => {
   const [frontendCosmetics, setFrontendCosmetics] = useState<SevenTVCosmetics | null>(null);
   const [paintData, setPaintData] = useState<any>(null);
   const [cosmeticsLoaded, setCosmeticsLoaded] = useState(false);
-  const sevenTVService = useMemo(() => new FrontendSevenTVService(), []);
   const isLoadingRef = useRef(false);
   const paintDataLoadingRef = useRef(false);
   const usernameRef = useRef<HTMLSpanElement>(null);
@@ -72,9 +74,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, emotes, channelInfo 
     }
   }, [message.user.cosmetics, frontendCosmetics, message.username]);
 
-  // Fetch paint data using cached service
+  // Fetch paint data using shared cached service
   const fetchPaintData = async (paintId: string) => {
-    return sevenTVService.fetchPaintData(paintId);
+    return sharedSevenTVService.fetchPaintData(paintId);
   };
 
   // Cache stats logging removed - too noisy even in development
@@ -84,7 +86,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, emotes, channelInfo 
     if (!message.user.cosmetics && !cosmeticsLoaded && !isLoadingRef.current) {
       isLoadingRef.current = true;
       // Use the Kick user ID from the backend message
-      sevenTVService.getUserCosmetics(message.username, message.user.id).then(cosmetics => {
+      sharedSevenTVService.getUserCosmetics(message.username, message.user.id).then(cosmetics => {
         setFrontendCosmetics(cosmetics);
         setCosmeticsLoaded(true);
         isLoadingRef.current = false;
@@ -101,7 +103,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, emotes, channelInfo 
         isLoadingRef.current = false;
       });
     }
-  }, [message.username, message.user.cosmetics, message.user.id, cosmeticsLoaded, sevenTVService]);
+  }, [message.username, message.user.cosmetics, message.user.id, cosmeticsLoaded]);
 
   // Fetch paint data when cosmetics are available (either from backend or frontend)
   useEffect(() => {
@@ -374,6 +376,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, emotes, channelInfo 
       />
     </div>
   );
-};
+});
 
 export default ChatMessage;
