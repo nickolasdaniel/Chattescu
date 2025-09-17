@@ -1,6 +1,6 @@
 // frontend/src/components/ChatOverlay.tsx
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
 import { ChatMessage as ChatMessageType, ChannelInfo, SevenTVEmote } from '../types';
 import './ChatOverlay.css';
@@ -24,6 +24,14 @@ const ChatOverlay: React.FC<ChatOverlayProps> = ({
   isConnecting,
   currentChannel
 }) => {
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (chatContainerRef.current && messages.length > 0) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
   const renderContent = () => {
     // If we're connecting to a channel, show waiting message
     if (isConnecting && currentChannel) {
@@ -91,7 +99,7 @@ const ChatOverlay: React.FC<ChatOverlayProps> = ({
 
   return (
     <div className="chat-overlay">
-      <div className="chat-container">
+      <div className="chat-container" ref={chatContainerRef}>
         {renderContent()}
       </div>
     </div>

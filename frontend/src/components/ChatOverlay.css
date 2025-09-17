@@ -11,8 +11,17 @@
   display: flex;
   flex-direction: column;
   padding: 10px;
-  max-height: 80vh;
-  overflow: hidden;
+  height: 80vh; /* Fixed height instead of max-height */
+  overflow-y: auto; /* Allow scrolling */
+  overflow-x: hidden;
+  justify-content: flex-end; /* Messages align to bottom */
+  /* Hide scrollbar but keep functionality */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.chat-container::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .welcome-message {
